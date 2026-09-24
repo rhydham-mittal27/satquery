@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Regenerable CLIP feature cache (~320MB; rebuild with vqa/extract_features.py)
+vqa/cache/
+
+# Logs and scratch
+*.log
+train_*.log
+
+# Datasets live outside the repo (see README)
+datasets/

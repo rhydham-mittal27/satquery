@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>SatQuery Analyst Workbench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #070b12;
+    --ink: #e2eaf6;
+    --ink-dim: rgba(226,234,246,.55);
+    --ink-dimmer: rgba(226,234,246,.42);
+    --saffron: #f0a13c;
+    --saffron-deep: #dd8526;
+    --mint: #4fc3a1;
+    --glass: rgba(255,255,255,.05);
+    --glass-border: rgba(255,255,255,.10);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  body {
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  input { font-family: 'IBM Plex Sans', sans-serif; }
+  input::placeholder { color: rgba(226,234,246,.38); }
+  button { font: inherit; }
+
+  @keyframes aw-sweep { 0% { transform: translateY(-100%); } 100% { transform: translateY(400%); } }
+  @keyframes aw-blink { 0%,100% { opacity:.35; } 50% { opacity:1; } }
+  @keyframes aw-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+
+  .shell { position: relative; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+  .bg-glow {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(70% 55% at 18% 0%, rgba(240,161,60,.16), transparent 60%),
+      radial-gradient(60% 50% at 85% 10%, rgba(63,120,214,.18), transparent 62%),
+      radial-gradient(80% 60% at 50% 110%, rgba(79,195,161,.10), transparent 60%);
+    pointer-events: none;
+  }
+
+  header {
+    position: relative; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 16px;
+    padding: 10px 16px; background: var(--glass); backdrop-filter: blur(22px) saturate(160%);
+    -webkit-backdrop-filter: blur(22px) saturate(160%); border-bottom: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.16);
+  }
+  .brand-mark { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .brand-icon { width: 26px; height: 26px; flex: none; border-radius: 8px; background: linear-gradient(145deg, var(--saffron), var(--saffron-deep)); box-shadow: inset 0 1px 0 rgba(255,255,255,.45); }
+  .brand-title { font-weight: 600; font-size: 14px; }
+  .brand-sub { font-size: 10.5px; color: var(--ink-dim); }
+  .scene-pill { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 10px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); min-width: 0; }
+  .scene-pill span:first-child { font-size: 10.5px; color: var(--ink-dim); }
+  .scene-pill .val { font-family: 'IBM Plex Mono', monospace; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 220px; }
+  .header-stats { display: flex; gap: 16px; margin-left: auto; font-size: 11px; color: var(--ink-dim); flex-wrap: wrap; }
+  .header-stats b { color: var(--ink); font-weight: 500; }
+
+  .body-grid {
+    position: relative; z-index: 4; flex: 1; min-height: 0; overflow: hidden;
+    display: grid; grid-template-columns: minmax(170px,214px) minmax(380px,1.7fr) minmax(258px,340px);
+    gap: 12px; padding: 12px;
+  }
+  @media (max-width: 900px) {
+    .body-grid { grid-template-columns: 1fr; grid-auto-rows: auto; overflow: auto; }
+  }
+
+  .glass-panel { border-radius: 14px; background: var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid var(--glass-border); box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+
+  aside.left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  nav.glass-panel { padding: 6px; }
+  .nav-btn { display: flex; align-items: center; gap: 9px; width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 10px; cursor: pointer; text-align: left; font-size: 12.5px; background: transparent; border: 1px solid transparent; color: rgba(226,234,246,.72); }
+  .nav-btn:hover { background: rgba(255,255,255,.07); }
+  .nav-btn.active { background: rgba(240,161,60,.16); border-color: rgba(240,161,60,.4); color: #fff; }
+  .nav-btn.disabled { opacity: .4; cursor: not-allowed; }
+  .nav-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; background: rgba(226,234,246,.3); }
+  .nav-btn.active .nav-dot { background: var(--saffron); }
+  .nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-count { margin-left: auto; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-dimmer); }
+
+  .layers-panel { padding: 12px; }
+  .panel-label { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-dim); margin-bottom: 10px; }
+  .layer-row { display: flex; align-items: center; gap: 9px; width: 100%; background: none; border: none; padding: 0; cursor: pointer; color: inherit; margin-bottom: 9px; }
+  .layer-row:disabled { opacity: .4; cursor: not-allowed; }
+  .layer-box { width: 14px; height: 14px; flex: none; border-radius: 4px; border: 1px solid rgba(226,234,246,.3); }
+  .layer-box.on { background: var(--saffron); border-color: var(--saffron); box-shadow: inset 0 0 0 2px rgba(13,19,32,.85); }
+  .layer-name { flex: 1; min-width: 0; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+  .layer-meta { font-family: 'IBM Plex Mono', monospace; font-size: 10px; color: var(--ink-dimmer); }
+
+  .model-card { margin-top: auto; border-radius: 14px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.09); padding: 11px 12px; }
+  .model-card .name { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; margin-top: 6px; }
+  .model-card .desc { font-size: 11px; color: var(--ink-dim); margin-top: 3px; }
+
+  main.viewport { position: relative; min-width: 0; border-radius: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,.12); background: #0b111c; cursor: pointer; background-size: cover; background-position: center; }
+  .weave { position: absolute; inset: 0; background: repeating-linear-gradient(45deg,#0e1620 0px,#0e1620 10px,#111b27 10px,#111b27 20px); }
+  .hatch { position: absolute; inset: 0; background: repeating-linear-gradient(0deg,rgba(150,180,210,.06) 0 1px,transparent 1px 64px), repeating-linear-gradient(90deg,rgba(150,180,210,.06) 0 1px,transparent 1px 64px); }
+  .viewport.has-image .weave, .viewport.has-image .hatch { opacity: .12; }
+  .vp-caption { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; max-width: 72%; color: rgba(226,234,246,.5); transition: opacity .3s ease; }
+  .viewport.has-image .vp-caption { opacity: 0; }
+  .vp-caption .l1 { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .06em; }
+  .vp-caption .l2 { font-size: 11px; color: rgba(226,234,246,.35); margin-top: 5px; }
+  .sweep { position: absolute; left: 0; right: 0; top: 0; height: 25%; background: linear-gradient(180deg,transparent,rgba(240,161,60,.22),transparent); animation: aw-sweep 1.5s ease-in-out infinite; pointer-events: none; display: none; }
+  .sweep.on { display: block; }
+
+  .vp-toolbar { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+  .tool-group { display: flex; gap: 4px; padding: 4px; flex: none; border-radius: 12px; background: rgba(16,22,34,.55); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
+  .tool-btn { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 8px; cursor: pointer; border: 1px solid transparent; background: transparent; color: rgba(226,234,246,.7); font-size: 13px; }
+  .tool-btn:hover { background: rgba(255,255,255,.12); }
+  .tool-btn.active { border-color: rgba(240,161,60,.55); background: rgba(240,161,60,.2); color: var(--saffron); }
+  .tool-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .overlay-chip { display: flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; padding: 6px 10px; border-radius: 10px; background: rgba(16,22,34,.55); backdrop-filter: blur(16px); border: 1px solid rgba(255,255,255,.14); font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: rgba(226,234,246,.8); }
+  .overlay-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(226,234,246,.4); }
+  .overlay-dot.on { background: var(--saffron); }
+
+  .scene-slots { position: absolute; top: 54px; left: 12px; display: flex; gap: 8px; z-index: 3; }
+  .scene-slot { position: relative; width: 72px; height: 54px; border-radius: 8px; border: 1.5px dashed rgba(255,255,255,.3); background: rgba(16,22,34,.6); background-size: cover; background-position: center; display: flex; align-items: center; justify-content: center; font-size: 9.5px; color: rgba(226,234,246,.5); cursor: pointer; text-align: center; }
+  .scene-slot.filled { border-style: solid; border-color: rgba(240,161,60,.6); color: transparent; }
+  .scene-slot.optional { opacity: .6; }
+  .scene-slot.optional:hover { opacity: 1; }
+  .scene-slot .tag { position: absolute; bottom: -14px; left: 0; right: 0; font-size: 9px; letter-spacing: .06em; text-transform: uppercase; color: rgba(226,234,246,.5); white-space: nowrap; }
+  .scene-slot .clear-btn { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; border-radius: 50%; background: #1a1006; border: 1px solid rgba(240,161,60,.6); color: var(--saffron); font-size: 10px; line-height: 1; display: none; align-items: center; justify-content: center; cursor: pointer; }
+  .scene-slot.filled:hover .clear-btn { display: flex; }
+  .router-chip { display: flex; align-items: center; gap: 6px; margin-top: 9px; padding: 6px 10px; border-radius: 8px; background: rgba(240,161,60,.08); border: 1px solid rgba(240,161,60,.2); font-size: 10.5px; color: rgba(226,234,246,.7); }
+  .router-chip b { color: var(--saffron); font-weight: 600; }
+  .router-note { font-size: 10.5px; color: #e8b34c; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(240,161,60,.08); border: 1px solid rgba(240,161,60,.25); display: none; }
+  .router-note.show { display: block; }
+
+  .vp-footer { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: rgba(226,234,246,.6); }
+  .vp-footer .pill { display: flex; gap: 10px; min-width: 0; overflow: hidden; white-space: nowrap; padding: 5px 9px; border-radius: 9px; background: rgba(16,22,34,.55); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.12); }
+  .vp-footer .scale { display: flex; align-items: center; gap: 8px; flex: none; white-space: nowrap; padding: 5px 9px; border-radius: 9px; background: rgba(16,22,34,.55); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.12); }
+  .vp-footer .scale .bar { width: 38px; height: 1px; background: rgba(226,234,246,.6); display: inline-block; }
+
+  #fileInputA, #fileInputB { display: none; }
+
+  aside.right { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+  .question-card { padding: 12px; }
+  .question-row { display: flex; gap: 8px; align-items: center; background: rgba(8,12,20,.6); border: 1px solid rgba(255,255,255,.14); border-radius: 10px; padding: 2px 2px 2px 10px; }
+  .question-row input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--ink); font-size: 13px; padding: 9px 0; }
+  .ask-btn { background: linear-gradient(145deg, var(--saffron), var(--saffron-deep)); color: #151a22; border: none; border-radius: 8px; font-weight: 600; font-size: 12.5px; padding: 9px 16px; cursor: pointer; box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
+  .ask-btn:hover { filter: brightness(1.08); }
+  .ask-btn.running { background: rgba(240,161,60,.4); cursor: wait; }
+  .examples-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+  .example-chip { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 20px; color: rgba(226,234,246,.75); font-size: 11px; padding: 5px 11px; cursor: pointer; }
+  .example-chip:hover { border-color: rgba(240,161,60,.6); color: var(--saffron); }
+
+  .answer-card { border-radius: 14px; background: #0d1320; border: 1px solid rgba(255,255,255,.10); padding: 14px; animation: aw-in .35s ease both; }
+  .answer-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .answer-head .lab { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-dim); }
+  .answer-head .latency { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-dimmer); }
+  .answer-headline { font-size: 22px; font-weight: 600; line-height: 1.25; margin-top: 7px; color: var(--ink); }
+  .answer-detail { font-size: 12px; line-height: 1.55; color: rgba(226,234,246,.72); margin-top: 6px; }
+  .conf-row { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
+  .conf-track { flex: 1; height: 5px; border-radius: 3px; background: rgba(255,255,255,.10); overflow: hidden; }
+  .conf-fill { height: 100%; background: linear-gradient(90deg, var(--mint), #79d9bd); width: 0%; transition: width .5s ease; }
+  .conf-val { font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; color: var(--mint); }
+  .conf-note { font-size: 10.5px; color: var(--ink-dimmer); margin-top: 5px; }
+
+  .evidence-card { flex: 1; min-height: 0; display: flex; flex-direction: column; border-radius: 14px; background: #0d1320; border: 1px solid rgba(255,255,255,.10); overflow: hidden; }
+  .evidence-head { display: flex; justify-content: space-between; align-items: center; padding: 11px 13px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .evidence-head .lab { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-dim); }
+  .evidence-head .count { font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-dimmer); }
+  .evidence-cols { display: grid; grid-template-columns: 22px 1fr 54px 46px; gap: 8px; padding: 7px 13px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: rgba(226,234,246,.4); border-bottom: 1px solid rgba(255,255,255,.06); }
+  .evidence-cols span:nth-child(3), .evidence-cols span:nth-child(4) { text-align: right; }
+  .evidence-rows { overflow: auto; min-height: 0; }
+  .evidence-row { display: grid; grid-template-columns: 22px 1fr 54px 46px; gap: 8px; align-items: center; padding: 9px 13px; font-size: 12px; border-bottom: 1px solid rgba(255,255,255,.05); }
+  .evidence-row .id { font-family: 'IBM Plex Mono', monospace; color: var(--saffron); }
+  .evidence-row .val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .evidence-row .area { font-family: 'IBM Plex Mono', monospace; text-align: right; color: rgba(226,234,246,.7); }
+  .evidence-row .conf { font-family: 'IBM Plex Mono', monospace; text-align: right; color: var(--mint); }
+  .evidence-row.empty { color: rgba(226,234,246,.45); }
+
+  footer.statusbar { position: relative; z-index: 5; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 7px 16px; background: var(--glass); backdrop-filter: blur(20px); border-top: 1px solid var(--glass-border); font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-dim); }
+  footer.statusbar .stat-push { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+  footer.statusbar .led { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: aw-blink 1.8s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="bg-glow"></div>
+
+  <header>
+    <div class="brand-mark">
+      <div class="brand-icon"></div>
+      <div style="min-width:0">
+        <div class="brand-title">SatQuery</div>
+        <div class="brand-sub">Earth-observation VQA workbench</div>
+      </div>
+    </div>
+    <div class="scene-pill">
+      <span>Scene</span>
+      <span class="val" id="scenePillVal">No scene loaded</span>
+    </div>
+    <div class="header-stats">
+      <span>Sensor <b id="statSensor">—</b></span>
+      <span>GSD <b id="statGsd">—</b></span>
+      <span>Mode <b id="statMode">Query</b></span>
+      <span id="statTime" style="font-family:'IBM Plex Mono',monospace"></span>
+    </div>
+  </header>
+
+  <div class="body-grid">
+    <aside class="left">
+      <nav class="glass-panel" id="navPanel"></nav>
+
+      <div class="glass-panel layers-panel">
+        <div class="panel-label">Layers</div>
+        <div id="layersPanel"></div>
+      </div>
+
+      <div class="model-card">
+        <div class="panel-label" style="margin-bottom:0">Router</div>
+        <div class="name" id="modelName">agentic task orchestration</div>
+        <div class="desc" id="modelDesc">1 scene → CLIP+MLP VQA (RSVQA-LR). 2 scenes → trained change-detection classifier. Auto-dispatched by image count, no mode to pick.</div>
+      </div>
+    </aside>
+
+    <main class="viewport" id="viewport">
+      <div class="weave"></div>
+      <div class="hatch"></div>
+      <div class="vp-caption" id="vpCaption">
+        <div class="l1" id="vpCaptionL1">satellite scene · drop GeoTIFF, JPG or PNG</div>
+        <div class="l2" id="vpCaptionL2">click to browse</div>
+      </div>
+      <div class="sweep" id="sweep"></div>
+
+      <div class="scene-slots" id="sceneSlots">
+        <div class="scene-slot" id="slotA">1<div class="tag">scene</div><span class="clear-btn" id="clearA">×</span></div>
+        <div class="scene-slot optional" id="slotB">+<div class="tag">compare (optional)</div><span class="clear-btn" id="clearB">×</span></div>
+      </div>
+
+      <div class="vp-toolbar">
+        <div class="tool-group">
+          <button class="tool-btn active" title="Pan">✥</button>
+          <button class="tool-btn" title="Box select" disabled>⬚</button>
+          <button class="tool-btn" title="Zoom to fit" disabled>⤢</button>
+          <button class="tool-btn" title="Reset view" disabled>⟲</button>
+          <button class="tool-btn" id="downloadTool" title="Download view">↧</button>
+        </div>
+        <div class="overlay-chip">
+          <span class="overlay-dot" id="overlayDot"></span>
+          <span id="overlayLabel">no scene</span>
+        </div>
+      </div>
+
+      <div class="vp-footer">
+        <span class="pill" id="coordPill">12.9716°N&nbsp;&nbsp;77.5946°E</span>
+        <span class="scale"><span class="bar"></span>500 m</span>
+      </div>
+
+      <input type="file" id="fileInputA" accept="image/*,.tif,.tiff" multiple />
+      <input type="file" id="fileInputB" accept="image/*,.tif,.tiff" />
+    </main>
+
+    <aside class="right">
+      <div class="glass-panel question-card">
+        <div class="panel-label">Question</div>
+        <div class="question-row">
+          <input id="questionInput" placeholder="Ask about this scene…" />
+          <button class="ask-btn" id="askBtn">Ask</button>
+        </div>
+        <div class="examples-row" id="examplesRow"></div>
+        <div class="router-chip"><span>Routes to:</span><b id="routerTarget">single-image VQA</b><span id="routerHint">— add a 2nd scene to compare</span></div>
+        <div class="router-note" id="routerNote"></div>
+      </div>
+
+      <div class="answer-card">
+        <div class="answer-head">
+          <span class="lab" id="answerLab">No query yet</span>
+          <span class="latency" id="latencyLabel">idle</span>
+        </div>
+        <div class="answer-headline" id="answerHeadline">Standby</div>
+        <div class="answer-detail" id="answerDetail">Upload a scene (and optionally a 2nd for comparison), then ask a question.</div>
+        <div class="conf-row">
+          <div class="conf-track"><div class="conf-fill" id="confFill"></div></div>
+          <span class="conf-val" id="confVal">—</span>
+        </div>
+        <div class="conf-note" id="confNote">No prediction yet</div>
+      </div>
+
+      <div class="evidence-card">
+        <div class="evidence-head">
+          <span class="lab">Evidence regions</span>
+          <span class="count" id="evidenceCount">0</span>
+        </div>
+        <div class="evidence-cols"><span>ID</span><span>Class</span><span>Area</span><span>Conf</span></div>
+        <div class="evidence-rows" id="evidenceRows"></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="statusbar">
+    <span>EPSG:4326</span>
+    <span id="modeStatusExtra">RSVQA-LR · closed vocabulary</span>
+    <span class="stat-push" id="statusPush" style="color:rgba(226,234,246,.5)">
+      <span class="led"></span><span id="statusText">Ready</span>
+    </span>
+  </footer>
+</div>
+
+<script>
+  const SAFFRON = '#f0a13c';
+  const MINT = '#4fc3a1';
+
+  const navDefs = [
+    { key: 'query', title: 'Query', enabled: true, sub: 'Auto-routed', active: true },
+    { key: 'regions', title: 'Regions', enabled: false, sub: 'soon' },
+    { key: 'runs', title: 'Runs', enabled: false, sub: 'soon' },
+    { key: 'exports', title: 'Exports', enabled: false, sub: 'soon' },
+  ];
+
+  const navPanel = document.getElementById('navPanel');
+  function renderNav() {
+    navPanel.innerHTML = '';
+    navDefs.forEach(n => {
+      const btn = document.createElement('button');
+      btn.className = 'nav-btn' + (n.active ? ' active' : '') + (n.enabled ? '' : ' disabled');
+      btn.innerHTML = `<span class="nav-dot"></span><span class="nav-label">${n.title}</span><span class="nav-count">${n.sub}</span>`;
+      navPanel.appendChild(btn);
+    });
+  }
+
+  const layerDefs = [
+    { key: 'truecolour', label: 'True colour', meta: 'RGB', on: true, enabled: false },
+    { key: 'ndvi', label: 'NDVI', meta: 'needs NIR', on: false, enabled: false },
+    { key: 'evidence', label: 'Evidence overlay', meta: '', on: true, enabled: true },
+    { key: 'graticule', label: 'Graticule', meta: '1 km', on: false, enabled: false },
+  ];
+  const layersPanel = document.getElementById('layersPanel');
+  function renderLayers() {
+    layersPanel.innerHTML = '';
+    layerDefs.forEach(l => {
+      const row = document.createElement('button');
+      row.className = 'layer-row';
+      row.disabled = !l.enabled;
+      row.innerHTML = `<span class="layer-box ${l.on ? 'on' : ''}"></span><span class="layer-name">${l.label}</span><span class="layer-meta">${l.meta}</span>`;
+      if (l.enabled) row.addEventListener('click', () => { l.on = !l.on; renderLayers(); applyEvidenceLayer(); });
+      layersPanel.appendChild(row);
+    });
+  }
+  function evidenceLayerOn() { return layerDefs.find(l => l.key === 'evidence').on; }
+
+  const examplesByCount = {
+    1: ['Is it a rural or an urban area', 'Is there a water area?', 'What is the amount of buildings?'],
+    2: ['How much area changed?', 'Did vegetation increase?', 'What changed between the two dates?'],
+  };
+  const examplesRow = document.getElementById('examplesRow');
+  function renderExamples() {
+    examplesRow.innerHTML = '';
+    const count = files.b ? 2 : 1;
+    examplesByCount[count].forEach(q => {
+      const btn = document.createElement('button');
+      btn.className = 'example-chip';
+      btn.textContent = q;
+      btn.addEventListener('click', () => { questionInput.value = q; });
+      examplesRow.appendChild(btn);
+    });
+  }
+
+  const viewport = document.getElementById('viewport');
+  const vpCaption = document.getElementById('vpCaption');
+  const vpCaptionL1 = document.getElementById('vpCaptionL1');
+  const vpCaptionL2 = document.getElementById('vpCaptionL2');
+  const sweep = document.getElementById('sweep');
+  const fileInputA = document.getElementById('fileInputA');
+  const fileInputB = document.getElementById('fileInputB');
+  const slotA = document.getElementById('slotA');
+  const slotB = document.getElementById('slotB');
+  const clearA = document.getElementById('clearA');
+  const clearB = document.getElementById('clearB');
+  const overlayDot = document.getElementById('overlayDot');
+  const overlayLabel = document.getElementById('overlayLabel');
+  const scenePillVal = document.getElementById('scenePillVal');
+  const statSensor = document.getElementById('statSensor');
+  const statGsd = document.getElementById('statGsd');
+  const statMode = document.getElementById('statMode');
+  const modeStatusExtra = document.getElementById('modeStatusExtra');
+  const questionInput = document.getElementById('questionInput');
+  const askBtn = document.getElementById('askBtn');
+  const answerLab = document.getElementById('answerLab');
+  const answerHeadline = document.getElementById('answerHeadline');
+  const answerDetail = document.getElementById('answerDetail');
+  const confFill = document.getElementById('confFill');
+  const confVal = document.getElementById('confVal');
+  const confNote = document.getElementById('confNote');
+  const evidenceCount = document.getElementById('evidenceCount');
+  const evidenceRows = document.getElementById('evidenceRows');
+  const statusText = document.getElementById('statusText');
+  const statusPush = document.getElementById('statusPush');
+  const downloadTool = document.getElementById('downloadTool');
+  const routerTarget = document.getElementById('routerTarget');
+  const routerHint = document.getElementById('routerHint');
+  const routerNote = document.getElementById('routerNote');
+
+  const files = { a: null, b: null }; // b is optional — presence alone drives routing
+  let lastResult = null;
+
+  function updateRouterChip() {
+    if (files.b) {
+      routerTarget.textContent = 'change detection';
+      routerHint.textContent = '— comparing 2 scenes';
+      statMode.textContent = 'Compare (2 scenes)';
+      modeStatusExtra.textContent = 'Change detection · trained classifier';
+      statSensor.textContent = 'n/a'; statGsd.textContent = 'n/a';
+    } else {
+      routerTarget.textContent = 'single-image VQA';
+      routerHint.textContent = '— add a 2nd scene to compare';
+      statMode.textContent = 'Query (1 scene)';
+      modeStatusExtra.textContent = 'RSVQA-LR · closed vocabulary';
+      statSensor.textContent = '—'; statGsd.textContent = '—';
+    }
+    renderExamples();
+  }
+
+  function resetAnswerPanel() {
+    answerLab.textContent = 'No query yet';
+    answerHeadline.textContent = 'Standby';
+    answerDetail.textContent = 'Upload a scene (and optionally a 2nd for comparison), then ask a question.';
+    confFill.style.width = '0%';
+    confVal.textContent = '—';
+    confNote.textContent = 'No prediction yet';
+    evidenceCount.textContent = '0';
+    evidenceRows.innerHTML = '';
+    renderEmptyEvidenceRow('Run a query to populate evidence');
+    routerNote.classList.remove('show');
+    setPhase('idle');
+    lastResult = null;
+  }
+
+  function renderEmptyEvidenceRow(text) {
+    evidenceRows.innerHTML = `<div class="evidence-row empty"><span class="id">—</span><span class="val">${text}</span><span class="area">—</span><span class="conf">—</span></div>`;
+  }
+
+  function setPhase(phase) {
+    if (phase === 'idle') {
+      sweep.classList.remove('on');
+      askBtn.classList.remove('running'); askBtn.disabled = false; askBtn.textContent = 'Ask';
+      statusText.textContent = 'Ready'; statusPush.style.color = 'rgba(226,234,246,.5)';
+    } else if (phase === 'running') {
+      sweep.classList.add('on');
+      askBtn.classList.add('running'); askBtn.disabled = true; askBtn.textContent = 'Running';
+      statusText.textContent = 'Inference running'; statusPush.style.color = SAFFRON;
+    } else if (phase === 'answered') {
+      sweep.classList.remove('on');
+      askBtn.classList.remove('running'); askBtn.disabled = false; askBtn.textContent = 'Ask';
+      statusText.textContent = 'Answer grounded'; statusPush.style.color = MINT;
+    } else if (phase === 'error') {
+      sweep.classList.remove('on');
+      askBtn.classList.remove('running'); askBtn.disabled = false; askBtn.textContent = 'Ask';
+      statusText.textContent = 'Error'; statusPush.style.color = '#e8703c';
+    }
+  }
+
+  function showLocalPreview(file, onReady) {
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (ext === 'tif' || ext === 'tiff') {
+      const formData = new FormData();
+      formData.append('image', file);
+      fetch('/api/preview', { method: 'POST', body: formData })
+        .then(res => { if (!res.ok) throw new Error('preview failed'); return res.json(); })
+        .then(data => onReady(data.preview))
+        .catch(() => onReady(null));
+    } else {
+      const reader = new FileReader();
+      reader.onload = ev => onReady(ev.target.result);
+      reader.readAsDataURL(file);
+    }
+  }
+
+  // ---- Unified upload: 1 image = VQA, 2 images = change detection ----
+  // Clicking/dropping on the main viewport fills whichever slot is still
+  // empty (scene 1 first, then scene 2) instead of always overwriting
+  // scene 1 — that was the earlier bug: a second upload silently replaced
+  // the first instead of adding a comparison scene.
+  viewport.addEventListener('click', () => {
+    if (!files.a) fileInputA.click();
+    else if (!files.b) fileInputB.click();
+    else fileInputA.click(); // both filled — clicking again replaces scene 1
+  });
+  viewport.addEventListener('dragover', e => e.preventDefault());
+  viewport.addEventListener('drop', e => {
+    e.preventDefault();
+    const dropped = Array.from(e.dataTransfer.files || []);
+    if (!dropped.length) return;
+    if (!files.a) {
+      loadSlot('a', dropped[0]);
+      if (dropped[1]) loadSlot('b', dropped[1]);
+    } else if (!files.b) {
+      loadSlot('b', dropped[0]);
+    } else {
+      loadSlot('a', dropped[0]);
+    }
+  });
+  fileInputA.addEventListener('change', () => {
+    if (!fileInputA.files.length) return;
+    loadSlot('a', fileInputA.files[0]);
+    if (fileInputA.files.length > 1) loadSlot('b', fileInputA.files[1]);
+  });
+  fileInputB.addEventListener('change', () => {
+    if (fileInputB.files.length) loadSlot('b', fileInputB.files[0]);
+  });
+
+  slotA.addEventListener('click', e => { e.stopPropagation(); fileInputA.click(); });
+  slotB.addEventListener('click', e => { e.stopPropagation(); fileInputB.click(); });
+  clearA.addEventListener('click', e => { e.stopPropagation(); clearSlot('a'); });
+  clearB.addEventListener('click', e => { e.stopPropagation(); clearSlot('b'); });
+
+  function loadSlot(which, file) {
+    files[which] = file;
+    scenePillVal.textContent = files.b ? `scene 1: ${files.a.name} · scene 2: ${files.b.name}` : files.a.name;
+    updateRouterChip();
+    showLocalPreview(file, dataUrl => {
+      if (!dataUrl) return;
+      const slot = which === 'a' ? slotA : slotB;
+      slot.classList.add('filled');
+      slot.style.backgroundImage = `url(${dataUrl})`;
+      // Main viewport always reflects the most-recently-loaded scene.
+      viewport.classList.add('has-image');
+      viewport.style.backgroundImage = `url(${dataUrl})`;
+      vpCaption.style.opacity = '0';
+      overlayLabel.textContent = files.b ? 'pair loaded' : 'scene loaded';
+    });
+  }
+
+  function clearSlot(which) {
+    files[which] = null;
+    const slot = which === 'a' ? slotA : slotB;
+    slot.classList.remove('filled');
+    slot.style.backgroundImage = 'none';
+    if (which === 'a' && files.b) {
+      // Promote scene 2 into scene 1's place rather than leaving a gap.
+      files.a = files.b; files.b = null;
+      slotB.classList.remove('filled'); slotB.style.backgroundImage = 'none';
+      slotA.classList.add('filled'); slotA.style.backgroundImage = slotB.style.backgroundImage;
+    }
+    if (!files.a) {
+      viewport.classList.remove('has-image');
+      viewport.style.backgroundImage = 'none';
+      vpCaption.style.opacity = '1';
+      scenePillVal.textContent = 'No scene loaded';
+      overlayLabel.textContent = 'no scene';
+    }
+    updateRouterChip();
+  }
+
+  function applyEvidenceLayer() {
+    if (!lastResult) return;
+    let src;
+    if (lastResult.task_type === 'change') {
+      src = evidenceLayerOn() ? lastResult.overlay : lastResult.before_preview;
+    } else if (lastResult.task_type === 'vqa' && lastResult.grounding) {
+      src = evidenceLayerOn() ? lastResult.grounding.overlay : lastResult.preview;
+    } else {
+      return; // no grounding to toggle for this vqa answer
+    }
+    if (src) viewport.style.backgroundImage = `url(${src})`;
+    overlayDot.classList.toggle('on', evidenceLayerOn());
+  }
+
+  async function ask() {
+    const question = questionInput.value.trim();
+    if (!question) return;
+    if (!files.a) { flashNeedUpload('Upload a scene first (a 2nd one is optional, for comparison).'); return; }
+
+    const willCompare = !!files.b;
+    setPhase('running');
+    answerLab.textContent = willCompare ? 'Comparing scenes' : 'Analyzing scene';
+    answerHeadline.textContent = 'Working…';
+    answerDetail.textContent = willCompare
+      ? 'Router dispatched to change detection — aligning images, computing diff mask, localizing regions.'
+      : 'Router dispatched to single-image VQA — encoding image and question with frozen CLIP.';
+    evidenceCount.textContent = '…';
+    routerNote.classList.remove('show');
+
+    const formData = new FormData();
+    formData.append('images', files.a);
+    if (files.b) formData.append('images', files.b);
+    formData.append('question', question);
+
+    try {
+      const res = await fetch('/api/query', { method: 'POST', body: formData });
+      if (!res.ok) throw new Error('Server error ' + res.status);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      lastResult = data;
+
+      let bgSrc;
+      if (data.task_type === 'change') {
+        bgSrc = evidenceLayerOn() ? data.overlay : data.before_preview;
+      } else if (data.task_type === 'vqa' && data.grounding && evidenceLayerOn()) {
+        bgSrc = data.grounding.overlay;
+      } else {
+        bgSrc = data.preview;
+      }
+      if (bgSrc) { viewport.style.backgroundImage = `url(${bgSrc})`; viewport.classList.add('has-image'); }
+
+      setPhase('answered');
+      answerLab.textContent = 'Answer · ' + question;
+
+      if (data.task_type === 'vqa') {
+        answerHeadline.textContent = data.answer;
+        answerDetail.textContent = 'Predicted by a CLIP-embedding classifier trained on RSVQA-LR (closed vocabulary).';
+        confFill.style.width = (data.confidence * 100) + '%';
+        confVal.textContent = (data.confidence * 100).toFixed(0) + '%';
+        confNote.textContent = 'Softmax confidence over 9-class vocabulary';
+
+        if (data.grounding) {
+          overlayLabel.textContent = 'grounded: ' + data.grounding.target; overlayDot.classList.add('on');
+          evidenceCount.textContent = '1';
+          evidenceRows.innerHTML = `<div class="evidence-row"><span class="id">1</span><span class="val">${data.grounding.target} (spectral index)</span><span class="area">—</span><span class="conf">${(data.confidence*100).toFixed(0)}%</span></div>`;
+        } else {
+          overlayLabel.textContent = 'text-only answer'; overlayDot.classList.remove('on');
+          evidenceCount.textContent = '0';
+          renderEmptyEvidenceRow('No reliable visual index for this question type');
+        }
+        if (data.router_note) {
+          routerNote.textContent = data.router_note;
+          routerNote.classList.add('show');
+        }
+      } else {
+        answerHeadline.textContent = data.headline;
+        answerDetail.textContent = data.answer;
+        confFill.style.width = '100%';
+        confVal.textContent = 'n/a';
+        confNote.textContent = 'Deterministic pixel-diff — not a probability';
+        overlayLabel.textContent = data.regions.length + ' region(s)'; overlayDot.classList.add('on');
+        evidenceCount.textContent = data.regions.length;
+        if (data.regions.length === 0) {
+          renderEmptyEvidenceRow('No region above threshold');
+        } else {
+          evidenceRows.innerHTML = data.regions.map(r => {
+            const label = r.greenness_delta > 0.02 ? 'Vegetation increase' : (r.greenness_delta < -0.02 ? 'Vegetation decrease' : 'Surface change');
+            return `<div class="evidence-row"><span class="id">${r.id}</span><span class="val">${label}</span><span class="area">${r.area_pct}%</span><span class="conf">—</span></div>`;
+          }).join('');
+        }
+      }
+    } catch (err) {
+      setPhase('error');
+      answerLab.textContent = 'Request failed';
+      answerHeadline.textContent = 'Error';
+      answerDetail.textContent = err.message;
+    }
+  }
+
+  function flashNeedUpload(msg) {
+    answerLab.textContent = 'Missing scene';
+    answerHeadline.textContent = 'Upload first';
+    answerDetail.textContent = msg;
+  }
+
+  downloadTool.addEventListener('click', () => {
+    const bg = viewport.style.backgroundImage;
+    const match = /url\("?(.+?)"?\)/.exec(bg);
+    if (!match) return;
+    const a = document.createElement('a');
+    a.href = match[1];
+    a.download = 'satquery-view.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  askBtn.addEventListener('click', ask);
+  questionInput.addEventListener('keydown', e => { if (e.key === 'Enter') ask(); });
+
+  function tickClock() {
+    const el = document.getElementById('statTime');
+    el.textContent = new Date().toISOString().slice(0, 19).replace('T', ' ') + ' UTC';
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  renderNav();
+  renderLayers();
+  updateRouterChip();
+  resetAnswerPanel();
+</script>
+</body>
+</html>
