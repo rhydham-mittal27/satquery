@@ -1,7 +1,7 @@
 [project]
 name = "satquery"
 version = "0.1.0"
-description = "Add your description here"
+description = "Natural-language Q&A over satellite imagery: VQA, change detection, and an optical-SAR consistency check"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
