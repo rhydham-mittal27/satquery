@@ -23,6 +23,7 @@ Built for ISRO / Space Applications Centre problem statement **SIH26167, "SatQue
 - [Results](#results)
 - [Where it fails](#where-it-fails)
 - [Coverage of the problem statement](#coverage-of-the-problem-statement)
+- [The journey](#the-journey)
 - [Quickstart](#quickstart)
 - [API](#api)
 - [Project layout](#project-layout)
@@ -146,6 +147,130 @@ Other known weak spots:
 | Remote-sensing-adapted VLM, adapted on BigEarthNet | Not built. CLIP is frozen and not fine-tuned on remote sensing data |
 | Evaluation on VRSBench and CDVQA | Not done. Neither was used; CDVQA has no public download link |
 | ISRO Cartosat-2S / RISAT evaluation set | Not public, not used |
+
+## The journey
+
+Built in a single Claude Code session on 16 Sep 2026 (about four hours of wall clock, 10:22 to 14:18) and published on 24 Sep. This section is reconstructed from the session's prompt log, not from memory. Clock times are approximate (one timestamp per turn).
+
+| | |
+|---|---|
+| Human prompts | 47 |
+| Shell commands run | 304 |
+| Datasets downloaded / actually used | 7 / 5 |
+| Change-detection configurations benchmarked | 9 (1 shipped, 3 superseded, 5 rejected) |
+| Grounding approaches tried | 4 (CLIP in 3 configurations, then spectral indices) |
+| Mean IoU, first attempt vs. shipped | 0.162 to 0.269 |
+
+**The path, with every dead end left in.** Green shipped, red was tried and rejected with a measured number.
+
+```mermaid
+flowchart TD
+    S(["10:22 Problem statement found"]) --> A["VQA head: 86.2% val"]
+    A --> B["UI on FastAPI"]
+    B --> C["Change v1: IoU 0.162"]
+    C --> C2["Histogram matching: 0.164"]
+    C2 --> X1["Sobel edges: 0.037"]:::bad
+    C2 --> X2["PCA + k-means: 0.122"]:::bad
+    C2 --> C3["CVA + Otsu: 0.205"]:::ok
+    C3 --> C4["RandomForest: 0.269"]:::ok
+    C4 --> X3["10 features: 0.254"]:::bad
+    C4 --> X4["+512 LEVIR-CD pairs: 0.150"]:::bad
+    C4 --> R["Router: 1 image or 2"]:::ok
+    R --> G1["CLIP grounding, 3 configs"]:::bad
+    R --> G2["Spectral-index grounding"]:::ok
+    G2 --> Y1["SAR 3-way split: 67%"]:::bad
+    G2 --> Y2["SAR water check: 98%"]:::ok
+    Y2 --> P(["24 Sep: GitHub + README"]):::ok
+    classDef ok fill:#123524,stroke:#4fc3a1,color:#e2eaf6
+    classDef bad fill:#3a1a1a,stroke:#e8703c,color:#e2eaf6
+```
+
+**Change-detection IoU in the order it was tried** (bar length is mean IoU on the 10 OSCD test pairs):
+
+```
+v1  mean + 1.5 std threshold    ████████████████░░░░░░░░░░░░░░  0.162
+v2  + histogram matching        ████████████████░░░░░░░░░░░░░░  0.164
+    Sobel edge diff        (x)  ████░░░░░░░░░░░░░░░░░░░░░░░░░░  0.037
+    PCA + k-means          (x)  ████████████░░░░░░░░░░░░░░░░░░  0.122
+v3  CVA + Otsu                  ████████████████████░░░░░░░░░░  0.205
+v4  RandomForest, 6 features    ███████████████████████████░░░  0.269  shipped
+    10 features            (x)  █████████████████████████░░░░░  0.254
+    + 512 LEVIR-CD pairs   (x)  ███████████████░░░░░░░░░░░░░░░  0.150
+    + 30 LEVIR-CD pairs    (x)  ████████████████████████░░░░░░  0.242
+```
+
+<details>
+<summary><b>Act 1 (10:22): pick the target</b></summary>
+
+Searched the SIH problem statements for the one called SatQuery and found SIH26167 (ISRO/SAC, Space Technology). Mapped it to the UN SDGs; SDG 13 won because the statement's own examples (deforestation, flood extent, land change) are climate-monitoring questions. Reframed mid-way from a hackathon entry to a university project expo, which changed the goal from "cover everything" to "make what exists demonstrably correct". Had the first dataset, RSVQA-LR, on disk within the first ten minutes.
+</details>
+
+<details>
+<summary><b>Act 2 (10:41): Part A, a VQA head on frozen CLIP</b></summary>
+
+Chose a frozen CLIP encoder plus a small MLP over fine-tuning BLIP-2: RSVQA-LR's answers are a closed 9-class vocabulary, so classification is faster and easier to defend than free-text generation. Encoding all three splits (about 77,000 questions) on CPU took about 15 minutes. Validation accuracy: **86.2%**.
+</details>
+
+<details>
+<summary><b>Act 3 (11:16): a UI worth demoing</b></summary>
+
+Streamlit was rejected in favor of plain HTML/JS on FastAPI. Two designs were pulled in from Claude Design and ported by hand: a "Mission Console" first, then the "Analyst Workbench", which became the single universal UI. Real Sentinel-2 tiles exposed problems synthetic tests never would (see the bug table).
+</details>
+
+<details>
+<summary><b>Act 4 (11:43): Part B, change detection</b></summary>
+
+The first version looked great on a synthetic test: paint a known 60x60 patch on a real tile and it measured 5.67% changed against an expected ~5.5%. Then real OSCD ground truth arrived and mean IoU was **0.162**; the synthetic check had been hiding an illumination and seasonality problem. What followed was a web search for classical techniques, one experiment at a time, each scored on the same 10 test pairs: histogram matching barely helped, edge differencing and PCA + k-means made things worse, Change Vector Analysis with an Otsu threshold gave the first real jump (0.205), and training a RandomForest on OSCD's own 14 training pairs reached **0.269**. Everything, including the losers, is written up in [`change/EVAL.md`](change/EVAL.md).
+</details>
+
+<details>
+<summary><b>Act 5 (13:04): "just add more data", the experiment that lost</b></summary>
+
+The natural hypothesis was overfitting on 14 training scenes, so 512 real LEVIR-CD pairs (45x more data) went in. Score dropped from 0.269 to **0.150**: LEVIR is 0.5 m/px building change, OSCD is 10 m/px, and the extra data swamped the in-domain signal. Rebalancing recovered most of it (0.242) but never beat OSCD-only. Richer features lost too (0.254). Both were reverted, and the reasoning stayed in the eval log instead of being quietly dropped.
+</details>
+
+<details>
+<summary><b>Act 6 (13:25): one box for everything, the router</b></summary>
+
+The manual Query/Compare tabs were replaced by a router: 1 image goes to VQA, 2 to change detection, with a live chip showing which pipeline will run before you submit. It is a rule, not an LLM, because image count is an unambiguous signal.
+</details>
+
+<details>
+<summary><b>Act 7 (13:30): grounding, where CLIP said no</b></summary>
+
+VQA answers had no visual evidence, so the obvious move was CLIP patch tokens as a zero-shot localizer. Three configurations were tested and all pointed the wrong way (ViT-B/32 scored real water lowest and farmland highest; a 5-prompt ensemble was worse; ViT-B/16's finer grid was just noise). Shipping that would have meant confident boxes in the wrong place, the exact thing the problem statement forbids. It was replaced by transparent RGB spectral indices, verified by eye to land on real water and vegetation, and limited to the question types where a reliable index exists.
+</details>
+
+<details>
+<summary><b>Act 8 (13:55): radar</b></summary>
+
+The first "SAR" dataset found on Hugging Face turned out, after decoding samples, to contain only RGB optical images (a low-res/high-res pair, no radar channel), a dead end caught before any code was written. EuroSAT-SAR (real Sentinel-1, geo-matched to Sentinel-2) was the real thing. The physics was measured before anything was built: water sits near -20 dB and built-up areas near -7 dB. A 3-way land-cover split scored 67% and was dropped; the binary water check scored 98%. Run end to end with the RGB water heuristic reading the optical side, it falls to 78%, and that number is in the README too. Mid-extraction the disk hit 0 bytes free; about 21 GB of unrelated cached model weights were cleared and the extraction was re-run to completion (27,000 of 27,000 files).
+</details>
+
+<details>
+<summary><b>Act 9 (24 Sep): ship it</b></summary>
+
+Pushed to GitHub, made public, wrote this README, then verified the quickstart from a fresh clone of the public repo (`uv sync`, then both pipelines producing the same outputs as the working copy).
+</details>
+
+### Bugs caught along the way
+
+| What broke | Found by | Root cause | Fix |
+|---|---|---|---|
+| Rural/urban question answered "yes" | Prompt, ~11:38 | RSVQA-LR asks it with one fixed phrasing; any rewording is out of distribution | Mask output to the answer group; example chips use the trained phrasing |
+| TIFF previews blank, then blue and soft | Prompt, ~11:31 | Browsers can't render TIFF; raw tiles are hazy and 256 px | Server-side conversion, percentile contrast stretch, Lanczos upscale and unsharp mask |
+| "Did vegetation increase?" showed an unrelated percentage | Prompt, ~12:04 | Answer headline hard-coded to "% changed" | Backend returns a question-aware headline |
+| "No significant change" shown beside 4.1% changed pixels | Self-caught in testing | Answer only checked region count, not overall change | Report the diffuse percentage and why nothing localized |
+| Live change endpoint about to crash | Self-caught | `features.py` changed to 10 features while the shipped model expects 6 | Reverted; checked `n_features_in_` matches |
+| Second upload replaced the first | Prompt, ~13:27 | Viewport click always targeted slot 1 | Click and drop fill the first empty slot |
+| Dataset extraction stopped at 20,136 of 27,000 files | Self-caught | Disk full | Freed space, re-ran to 27,000 |
+| README caption said "worst of the 10" | Self-caught | Pair 06 is the third-weakest, not the worst | Caption corrected |
+
+### What the log says about how it went
+
+- Every hypothesis that lost (more data, more features, CLIP grounding, a 3-way SAR split) was killed by a measurement within minutes, not defended.
+- The biggest single jump came from training on in-domain labeled data, not from a cleverer threshold or a bigger model.
+- The synthetic sanity check was the least trustworthy number in the project. Real held-out data told the truth.
 
 ## Quickstart
 
