@@ -150,18 +150,18 @@ Other known weak spots:
 
 ## The journey
 
-Built in a single Claude Code session on 16 Sep 2026 (about four hours of wall clock, 10:22 to 14:18) and published on 24 Sep. This section is reconstructed from the session's prompt log, not from memory. Clock times are approximate (one timestamp per turn).
+I did most of this on one day, 16 Sep 2026, between about 10:20 and 14:20, and put it on GitHub on 24 Sep. What follows is rebuilt from my working logs (the commands I ran, their output and timestamps), so times are approximate and every number is one that was actually printed at the time.
 
 | | |
 |---|---|
-| Human prompts | 47 |
+| Time on the main build | about 4 hours |
 | Shell commands run | 304 |
 | Datasets downloaded / actually used | 7 / 5 |
-| Change-detection configurations benchmarked | 9 (1 shipped, 3 superseded, 5 rejected) |
-| Grounding approaches tried | 4 (CLIP in 3 configurations, then spectral indices) |
-| Mean IoU, first attempt vs. shipped | 0.162 to 0.269 |
+| Change-detection setups tried | 9 (1 kept, 3 superseded, 5 dropped) |
+| Ways I tried to draw evidence boxes | 4 (CLIP three ways, then spectral indices) |
+| Mean IoU, first attempt vs. final | 0.162 to 0.269 |
 
-**The path, with every dead end left in.** Green shipped, red was tried and rejected with a measured number.
+Here is the path. Green is what I kept. Red is what I tried and threw away, each with the number that got it thrown away.
 
 ```mermaid
 flowchart TD
@@ -185,7 +185,7 @@ flowchart TD
     classDef bad fill:#3a1a1a,stroke:#e8703c,color:#e2eaf6
 ```
 
-**Change-detection IoU in the order it was tried** (bar length is mean IoU on the 10 OSCD test pairs):
+Change-detection IoU in the order I tried things (bar length is mean IoU on the 10 OSCD test pairs):
 
 ```
 v1  mean + 1.5 std threshold    ████████████████░░░░░░░░░░░░░░  0.162
@@ -200,77 +200,81 @@ v4  RandomForest, 6 features    ████████████████
 ```
 
 <details>
-<summary><b>Act 1 (10:22): pick the target</b></summary>
+<summary><b>10:22, picking the problem</b></summary>
 
-Searched the SIH problem statements for the one called SatQuery and found SIH26167 (ISRO/SAC, Space Technology). Mapped it to the UN SDGs; SDG 13 won because the statement's own examples (deforestation, flood extent, land change) are climate-monitoring questions. Reframed mid-way from a hackathon entry to a university project expo, which changed the goal from "cover everything" to "make what exists demonstrably correct". Had the first dataset, RSVQA-LR, on disk within the first ten minutes.
+I went through the SIH problem statements looking for the one called SatQuery and found SIH26167, from ISRO's Space Applications Centre. I mapped it to the UN goals and SDG 13 fit best, since the statement's own examples (deforestation, flooding, land change) are climate-monitoring questions. Partway through I decided this would be my university project expo entry instead of a hackathon submission, which changed the goal from covering the whole statement to making the parts I built hold up. RSVQA-LR was the first dataset on disk, within about ten minutes.
 </details>
 
 <details>
-<summary><b>Act 2 (10:41): Part A, a VQA head on frozen CLIP</b></summary>
+<summary><b>10:41, part A: questions about a single image</b></summary>
 
-Chose a frozen CLIP encoder plus a small MLP over fine-tuning BLIP-2: RSVQA-LR's answers are a closed 9-class vocabulary, so classification is faster and easier to defend than free-text generation. Encoding all three splits (about 77,000 questions) on CPU took about 15 minutes. Validation accuracy: **86.2%**.
+Before choosing anything I made sure I understood what VQA and VLMs actually are. I went with a frozen CLIP encoder and a small classifier on top instead of fine-tuning BLIP-2. RSVQA-LR's answers come from a fixed set of 9 classes, so classification is quicker to train and easier to defend than generating text. Encoding all the questions (about 77,000) on CPU took roughly 15 minutes. Validation accuracy came out at 86.2%.
 </details>
 
 <details>
-<summary><b>Act 3 (11:16): a UI worth demoing</b></summary>
+<summary><b>11:16, a UI I'd be happy to demo</b></summary>
 
-Streamlit was rejected in favor of plain HTML/JS on FastAPI. Two designs were pulled in from Claude Design and ported by hand: a "Mission Console" first, then the "Analyst Workbench", which became the single universal UI. Real Sentinel-2 tiles exposed problems synthetic tests never would (see the bug table).
+I dropped the quick Streamlit idea and went with plain HTML and JavaScript on FastAPI. I mocked up two layouts, a dark "Mission Console" first and then the "Analyst Workbench", and the second one became the single UI. Real Sentinel-2 tiles caused problems that my synthetic tests never showed (see the bug table below).
 </details>
 
 <details>
-<summary><b>Act 4 (11:43): Part B, change detection</b></summary>
+<summary><b>11:43, part B: change detection</b></summary>
 
-The first version looked great on a synthetic test: paint a known 60x60 patch on a real tile and it measured 5.67% changed against an expected ~5.5%. Then real OSCD ground truth arrived and mean IoU was **0.162**; the synthetic check had been hiding an illumination and seasonality problem. What followed was a web search for classical techniques, one experiment at a time, each scored on the same 10 test pairs: histogram matching barely helped, edge differencing and PCA + k-means made things worse, Change Vector Analysis with an Otsu threshold gave the first real jump (0.205), and training a RandomForest on OSCD's own 14 training pairs reached **0.269**. Everything, including the losers, is written up in [`change/EVAL.md`](change/EVAL.md).
+The first version looked great on a synthetic test. I painted a known 60x60 patch onto a real tile and it measured 5.67% changed against roughly 5.5% expected. Then I ran it on real OSCD ground truth and the mean IoU was 0.162. The synthetic test had been hiding an illumination and seasonality problem.
+
+From there it was a loop: look up a classical change-detection method, try it, score it on the same 10 test pairs, keep it or drop it. Histogram matching barely helped. Sobel edges and PCA + k-means made things worse. Change Vector Analysis with an Otsu threshold gave the first real jump (0.205), and training a RandomForest on OSCD's own 14 training pairs got to 0.269. All of it, losers included, is in [`change/EVAL.md`](change/EVAL.md).
 </details>
 
 <details>
-<summary><b>Act 5 (13:04): "just add more data", the experiment that lost</b></summary>
+<summary><b>13:04, more data made it worse</b></summary>
 
-The natural hypothesis was overfitting on 14 training scenes, so 512 real LEVIR-CD pairs (45x more data) went in. Score dropped from 0.269 to **0.150**: LEVIR is 0.5 m/px building change, OSCD is 10 m/px, and the extra data swamped the in-domain signal. Rebalancing recovered most of it (0.242) but never beat OSCD-only. Richer features lost too (0.254). Both were reverted, and the reasoning stayed in the eval log instead of being quietly dropped.
+My guess was overfitting on 14 training scenes, so I added 512 real LEVIR-CD pairs (45x more data). The score fell from 0.269 to 0.150. LEVIR is 0.5 m/px building change and OSCD is 10 m/px, and the extra data drowned out the signal I cared about. Rebalancing brought it back to 0.242 but never past OSCD alone. Richer features lost too (0.254). I reverted both and wrote the reasoning down instead of quietly deleting the runs.
 </details>
 
 <details>
-<summary><b>Act 6 (13:25): one box for everything, the router</b></summary>
+<summary><b>13:25, one box for everything</b></summary>
 
-The manual Query/Compare tabs were replaced by a router: 1 image goes to VQA, 2 to change detection, with a live chip showing which pipeline will run before you submit. It is a rule, not an LLM, because image count is an unambiguous signal.
+Separate Query and Compare tabs felt wrong, so I replaced them with a router: one image goes to VQA, two go to change detection, and a small chip shows which will run before you press ask. It's a plain rule and not a model, because the number of images already tells you what's being asked.
 </details>
 
 <details>
-<summary><b>Act 7 (13:30): grounding, where CLIP said no</b></summary>
+<summary><b>13:30, evidence boxes, and CLIP letting me down</b></summary>
 
-VQA answers had no visual evidence, so the obvious move was CLIP patch tokens as a zero-shot localizer. Three configurations were tested and all pointed the wrong way (ViT-B/32 scored real water lowest and farmland highest; a 5-prompt ensemble was worse; ViT-B/16's finer grid was just noise). Shipping that would have meant confident boxes in the wrong place, the exact thing the problem statement forbids. It was replaced by transparent RGB spectral indices, verified by eye to land on real water and vegetation, and limited to the question types where a reliable index exists.
+VQA answers had nothing visual behind them, so I tried CLIP's patch features as a zero-shot locator. I tested it three ways and it pointed the wrong way each time: ViT-B/32 scored real water lowest and farmland highest, a 5-prompt ensemble was worse, and ViT-B/16's finer grid was just noise. Shipping that would have meant confident boxes in the wrong places, which is exactly what the problem statement says not to do. I switched to plain RGB spectral indices, checked by eye that they land on real water and vegetation, and only draw a box where an index like that exists.
 </details>
 
 <details>
-<summary><b>Act 8 (13:55): radar</b></summary>
+<summary><b>13:55, radar</b></summary>
 
-The first "SAR" dataset found on Hugging Face turned out, after decoding samples, to contain only RGB optical images (a low-res/high-res pair, no radar channel), a dead end caught before any code was written. EuroSAT-SAR (real Sentinel-1, geo-matched to Sentinel-2) was the real thing. The physics was measured before anything was built: water sits near -20 dB and built-up areas near -7 dB. A 3-way land-cover split scored 67% and was dropped; the binary water check scored 98%. Run end to end with the RGB water heuristic reading the optical side, it falls to 78%, and that number is in the README too. Mid-extraction the disk hit 0 bytes free; about 21 GB of unrelated cached model weights were cleared and the extraction was re-run to completion (27,000 of 27,000 files).
+The first "SAR" dataset I found on Hugging Face only had RGB images (a low-res and a high-res pair, no radar channel). I found that out by decoding samples before writing any code. EuroSAT-SAR (real Sentinel-1, matched to Sentinel-2 tiles) was the real thing. Before building anything I measured the physics: water sits around -20 dB and built-up areas around -7 dB. A three-way land-cover split scored 67% and I dropped it. The binary water check scored 98%. Run end to end, with the RGB water heuristic reading the optical side, it drops to 78%, and that number is in the results too.
+
+The disk filled up partway through extraction (0 bytes free). I cleared about 21 GB of unrelated cached model weights and re-ran it until all 27,000 files were there.
 </details>
 
 <details>
-<summary><b>Act 9 (24 Sep): ship it</b></summary>
+<summary><b>24 Sep, shipping it</b></summary>
 
-Pushed to GitHub, made public, wrote this README, then verified the quickstart from a fresh clone of the public repo (`uv sync`, then both pipelines producing the same outputs as the working copy).
+I pushed it to GitHub, made the repo public and wrote this README. Then I cloned the public repo fresh and checked the quickstart: `uv sync`, then both pipelines, which gave the same output as my working copy.
 </details>
 
-### Bugs caught along the way
+### Bugs I hit along the way
 
-| What broke | Found by | Root cause | Fix |
+| What broke | Spotted | Root cause | Fix |
 |---|---|---|---|
-| Rural/urban question answered "yes" | Prompt, ~11:38 | RSVQA-LR asks it with one fixed phrasing; any rewording is out of distribution | Mask output to the answer group; example chips use the trained phrasing |
-| TIFF previews blank, then blue and soft | Prompt, ~11:31 | Browsers can't render TIFF; raw tiles are hazy and 256 px | Server-side conversion, percentile contrast stretch, Lanczos upscale and unsharp mask |
-| "Did vegetation increase?" showed an unrelated percentage | Prompt, ~12:04 | Answer headline hard-coded to "% changed" | Backend returns a question-aware headline |
-| "No significant change" shown beside 4.1% changed pixels | Self-caught in testing | Answer only checked region count, not overall change | Report the diffuse percentage and why nothing localized |
-| Live change endpoint about to crash | Self-caught | `features.py` changed to 10 features while the shipped model expects 6 | Reverted; checked `n_features_in_` matches |
-| Second upload replaced the first | Prompt, ~13:27 | Viewport click always targeted slot 1 | Click and drop fill the first empty slot |
-| Dataset extraction stopped at 20,136 of 27,000 files | Self-caught | Disk full | Freed space, re-ran to 27,000 |
-| README caption said "worst of the 10" | Self-caught | Pair 06 is the third-weakest, not the worst | Caption corrected |
+| Rural/urban question answered "yes" | In the browser, ~11:38 | RSVQA-LR asks it with one fixed phrasing, so any rewording is out of distribution | Mask the output to the answer group; example chips use the trained phrasing |
+| TIFF previews blank, then blue and soft | In the browser, ~11:31 | Browsers can't render TIFF, and raw tiles are hazy and 256 px | Server-side conversion, percentile contrast stretch, Lanczos upscale and unsharp mask |
+| "Did vegetation increase?" showed an unrelated percentage | In the browser, ~12:04 | Answer headline was hard-coded to "% changed" | Backend returns a headline that matches the question |
+| "No significant change" shown next to 4.1% changed pixels | Checking outputs | The answer only looked at the region count, not overall change | Report the diffuse percentage and why nothing localized |
+| Live change endpoint about to crash | Checking outputs | `features.py` had moved to 10 features while the shipped model expects 6 | Reverted, and checked `n_features_in_` matches |
+| Second upload replaced the first | In the browser, ~13:27 | Clicking the viewport always targeted slot 1 | Click and drop fill the first empty slot |
+| Dataset extraction stopped at 20,136 of 27,000 files | Checking outputs | Disk was full | Freed space, re-ran to 27,000 |
+| README caption said "worst of the 10" | Re-reading my own numbers | Pair 06 is the third-weakest, not the worst | Fixed the caption |
 
-### What the log says about how it went
+### What I took from it
 
-- Every hypothesis that lost (more data, more features, CLIP grounding, a 3-way SAR split) was killed by a measurement within minutes, not defended.
-- The biggest single jump came from training on in-domain labeled data, not from a cleverer threshold or a bigger model.
-- The synthetic sanity check was the least trustworthy number in the project. Real held-out data told the truth.
+- Every idea that lost (more data, more features, CLIP boxes, the three-way SAR split) was settled by a measurement within minutes.
+- The biggest jump came from training on labeled data from the same domain, not from a smarter threshold or a bigger model.
+- My synthetic test was the least trustworthy number in the project. The held-out real data was the one that told me the truth.
 
 ## Quickstart
 
